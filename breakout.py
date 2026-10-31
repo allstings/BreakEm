@@ -2,10 +2,14 @@
 Breakout — a classic brick-breaking game built with pygame.
 
 Controls:
-    Mouse or Left/Right arrows / A, D  — move paddle
+    Mouse or Left/Right arrow keys     — move paddle
     Space or Left click               — launch ball
     R                                — restart (on win/lose screens)
     Esc                              — quit
+
+Five levels: clearing a level's bricks advances to the next layout. Ball
+speed rises each level and power-up drops become rarer; level 5 is the
+final layout, guarded by indestructible bricks.
 
 Drawn-shapes version: all visuals are pygame.draw primitives so the
 game runs with zero assets. Each entity has a single `draw` method;
@@ -52,18 +56,84 @@ PADDLE_MAX_BOUNCE_DEG = 60  # steepest paddle deflection (degrees from vertical)
 BRICK_COLS = 8
 BRICK_ROWS = 6
 BRICK_GAP = 6
-# (color, points, hit points) per row, top row first
-BRICK_ROWS_DEF = [
-    ((224, 70, 70), 50, 2),    # red — 2 hits
-    ((230, 126, 34), 40, 2),   # orange — 2 hits
-    ((241, 196, 23), 30, 1),   # yellow
-    ((46, 160, 90), 20, 1),    # green
-    ((58, 123, 214), 10, 1),   # blue
-    ((147, 88, 204), 10, 1),   # purple
+# (color, points) per row, top row first
+BRICK_ROW_STYLE = [
+    ((224, 70, 70), 50),   # red
+    ((230, 126, 34), 40),  # orange
+    ((241, 196, 23), 30),  # yellow
+    ((46, 160, 90), 20),   # green
+    ((58, 123, 214), 10),  # blue
+    ((147, 88, 204), 10),  # purple
+]
+
+# Level data table. Each level is BRICK_ROWS strings of BRICK_COLS chars:
+#   '1' one-hit brick    '2' two-hit    '3' three-hit
+#   '#' indestructible   '.' empty space
+# plus a ball speed multiplier and the power-up drop chance.
+LEVELS = [
+    {   # Level 1 — baseline
+        "speed": 1.00,
+        "powerup_chance": 0.18,
+        "pattern": [
+            "22222222",
+            "22222222",
+            "11111111",
+            "11111111",
+            "11111111",
+            "11111111",
+        ],
+    },
+    {   # Level 2 — staggered/offset rows, ball +10%
+        "speed": 1.10,
+        "powerup_chance": 0.18,
+        "pattern": [
+            "2222222.",
+            ".2222222",
+            "1111111.",
+            ".1111111",
+            "1111111.",
+            ".1111111",
+        ],
+    },
+    {   # Level 3 — gaps to work around, ball +20%
+        "speed": 1.20,
+        "powerup_chance": 0.15,
+        "pattern": [
+            "22..22..",
+            ".111111.",
+            "11....11",
+            ".111111.",
+            "11....11",
+            "..1111..",
+        ],
+    },
+    {   # Level 4 — mostly two-hit bricks, rarer power-ups
+        "speed": 1.30,
+        "powerup_chance": 0.12,
+        "pattern": [
+            "22222222",
+            "22222222",
+            "22222222",
+            "22222222",
+            "11111111",
+            "11111111",
+        ],
+    },
+    {   # Level 5 (final) — indestructible bricks guard the field
+        "speed": 1.40,
+        "powerup_chance": 0.10,
+        "pattern": [
+            "22222222",
+            "#111111#",
+            "#111111#",
+            ".111111.",
+            ".111111.",
+            "22222222",
+        ],
+    },
 ]
 
 # Power-ups
-POWERUP_CHANCE = 0.18        # chance a broken brick drops a power-up
 POWERUP_SIZE = 18
 POWERUP_FALL_SPEED = 130     # pixels / second
 POWERUP_DURATION = 10.0      # seconds for timed power-ups
@@ -111,12 +181,12 @@ class Paddle:
 
 
 class Ball:
-    def __init__(self, x, y):
+    def __init__(self, x, y, speed=BALL_SPEED_START):
         self.x = float(x)
         self.y = float(y)
         self.vx = 0.0
         self.vy = 0.0
-        self.speed = BALL_SPEED_START
+        self.speed = speed
         self.stuck = True  # riding on the paddle until launched
 
     def launch(self, angle_offset=0.0):
@@ -216,15 +286,20 @@ class Ball:
 
 
 class Brick:
-    def __init__(self, x, y, w, h, color, points, hp=1):
+    INDESTRUCTIBLE_COLOR = (110, 116, 130)
+
+    def __init__(self, x, y, w, h, color, points, hp=1, indestructible=False):
         self.rect = pygame.Rect(x, y, w, h)
         self.color = color
         self.points = points
         self.hp = hp
         self.max_hp = hp
         self.alive = True
+        self.indestructible = indestructible
 
     def hit(self):
+        if self.indestructible:
+            return True
         self.hp -= 1
         if self.hp <= 0:
             self.alive = False
@@ -234,7 +309,9 @@ class Brick:
         if not self.alive:
             return
         base = self.color
-        if self.hp < self.max_hp:
+        if self.indestructible:
+            base = self.INDESTRUCTIBLE_COLOR
+        elif self.hp < self.max_hp:
             # Cracked / damaged bricks get darker
             base = tuple(int(c * 0.55) for c in base)
         rect = self.rect
@@ -306,7 +383,12 @@ class Game:
         self.reset(full=True)
 
     # -- setup ------------------------------------------------------------
+    def level_def(self):
+        return LEVELS[self.level - 1]
+
     def reset(self, full=True):
+        if full:
+            self.level = 1
         self.paddle = Paddle()
         self.balls = []
         self.powerups = []
@@ -316,27 +398,43 @@ class Game:
         self.serve()
 
     def build_bricks(self):
+        level = self.level_def()
         self.bricks = []
         margin_top = 70
         area_w = WIDTH - 60
         brick_w = (area_w - BRICK_GAP * (BRICK_COLS - 1)) // BRICK_COLS
         brick_h = 26
         x0 = (WIDTH - (brick_w * BRICK_COLS + BRICK_GAP * (BRICK_COLS - 1))) // 2
-        for row, (color, points, hp) in enumerate(BRICK_ROWS_DEF):
-            for col in range(BRICK_COLS):
+        for row, pattern_row in enumerate(level["pattern"]):
+            color, points = BRICK_ROW_STYLE[row]
+            for col, ch in enumerate(pattern_row[:BRICK_COLS]):
+                if ch == ".":
+                    continue
                 x = x0 + col * (brick_w + BRICK_GAP)
                 y = margin_top + row * (brick_h + BRICK_GAP)
-                self.bricks.append(Brick(x, y, brick_w, brick_h, color, points, hp))
+                if ch == "#":
+                    self.bricks.append(Brick(
+                        x, y, brick_w, brick_h,
+                        Brick.INDESTRUCTIBLE_COLOR, 0,
+                        hp=1, indestructible=True,
+                    ))
+                else:
+                    self.bricks.append(Brick(
+                        x, y, brick_w, brick_h, color, points, hp=int(ch)
+                    ))
 
     def serve(self):
-        self.balls = [Ball(self.paddle.center()[0], self.paddle.y)]
-        self.balls[0].stuck = True
+        base_speed = BALL_SPEED_START * self.level_def()["speed"]
+        ball = Ball(self.paddle.center()[0], self.paddle.y, speed=base_speed)
+        ball.stuck = True
+        self.balls = [ball]
         self.powerups = []
         self.state = STATE_SERVE
 
     # -- helpers ----------------------------------------------------------
-    def alive_bricks(self):
-        return [b for b in self.bricks if b.alive]
+    @staticmethod
+    def destructible_bricks(bricks):
+        return [b for b in bricks if b.alive and not b.indestructible]
 
     def render_text(self, text, font, color, center=(WIDTH // 2, HEIGHT // 2)):
         surf = font.render(text, True, color)
@@ -367,9 +465,9 @@ class Game:
     # -- update -----------------------------------------------------------
     def handle_paddle_input(self, dt, keys):
         dx = 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+        if keys[pygame.K_LEFT]:
             dx -= PADDLE_SPEED
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+        if keys[pygame.K_RIGHT]:
             dx += PADDLE_SPEED
         if dx:
             self.paddle.move(dx * dt)
@@ -403,7 +501,7 @@ class Game:
                 if brick.hit():
                     self.score += brick.points
                     ball.set_speed(ball.speed + BALL_SPEED_GAIN_PER_BRICK)
-                    if random.random() < POWERUP_CHANCE:
+                    if random.random() < self.level_def()["powerup_chance"]:
                         self.powerups.append(PowerUp(brick.rect.centerx, brick.rect.centery))
                 break  # one brick interaction per ball per frame
 
@@ -428,10 +526,15 @@ class Game:
                 self.on_powerup_caught(pu.kind)
                 self.powerups.remove(pu)
 
-        # Win condition
-        if not self.alive_bricks():
-            self.score += self.lives * 100  # small life bonus
-            self.state = STATE_WIN
+        # Level clear / campaign win
+        if not self.destructible_bricks(self.bricks):
+            if self.level < len(LEVELS):
+                self.level += 1
+                self.build_bricks()
+                self.serve()
+            else:
+                self.score += self.lives * 100  # small life bonus
+                self.state = STATE_WIN
 
     # -- draw -------------------------------------------------------------
     def draw(self):
@@ -447,7 +550,9 @@ class Game:
 
         # HUD
         hud = self.font_mid.render(
-            f"Score: {self.score}     Lives: {self.lives}", True, COLOR_TEXT
+            f"Score: {self.score}     Level: {self.level}/{len(LEVELS)}"
+            f"     Lives: {self.lives}",
+            True, COLOR_TEXT,
         )
         self.screen.blit(hud, (16, 14))
 
@@ -465,8 +570,8 @@ class Game:
         elif self.state == STATE_WIN:
             self.render_text("YOU WIN!", self.font_big, (90, 220, 140),
                              (WIDTH // 2, HEIGHT // 2 - 40))
-            self.render_text(f"Final score: {self.score}", self.font_mid,
-                             COLOR_TEXT, (WIDTH // 2, HEIGHT // 2 + 20))
+            self.render_text(f"All {len(LEVELS)} levels cleared  ·  Score: {self.score}",
+                             self.font_mid, COLOR_TEXT, (WIDTH // 2, HEIGHT // 2 + 20))
             self.render_text("Press R to play again  ·  Esc to quit",
                              self.font_small, COLOR_TEXT_DIM,
                              (WIDTH // 2, HEIGHT // 2 + 70))
