@@ -11,13 +11,17 @@ Five levels: clearing a level's bricks advances to the next layout. Ball
 speed rises each level and power-up drops become rarer; level 5 is the
 final layout, guarded by indestructible bricks.
 
-Drawn-shapes version: all visuals are pygame.draw primitives so the
-game runs with zero assets. Each entity has a single `draw` method;
+Sound effects live in assets/ and are synthesized by make_sounds.py
+(rerun it any time to regenerate). All other visuals are pygame.draw
+primitives, so the game needs no image assets.
+
+Each entity has a single `draw` method;
 to use sprites later, replace the body of those draw methods with
 surface.blit(...).
 """
 
 import math
+import os
 import random
 import sys
 
@@ -72,6 +76,7 @@ BRICK_ROW_STYLE = [
 # plus a ball speed multiplier and the power-up drop chance.
 LEVELS = [
     {   # Level 1 — baseline
+        "name": "BASELINE",
         "speed": 1.00,
         "powerup_chance": 0.18,
         "pattern": [
@@ -84,6 +89,7 @@ LEVELS = [
         ],
     },
     {   # Level 2 — staggered/offset rows, ball +10%
+        "name": "STAGGERED",
         "speed": 1.10,
         "powerup_chance": 0.18,
         "pattern": [
@@ -96,6 +102,7 @@ LEVELS = [
         ],
     },
     {   # Level 3 — gaps to work around, ball +20%
+        "name": "THE GAPS",
         "speed": 1.20,
         "powerup_chance": 0.15,
         "pattern": [
@@ -108,6 +115,7 @@ LEVELS = [
         ],
     },
     {   # Level 4 — mostly two-hit bricks, rarer power-ups
+        "name": "HARDENED",
         "speed": 1.30,
         "powerup_chance": 0.12,
         "pattern": [
@@ -120,6 +128,7 @@ LEVELS = [
         ],
     },
     {   # Level 5 (final) — indestructible bricks guard the field
+        "name": "THE GATE",
         "speed": 1.40,
         "powerup_chance": 0.10,
         "pattern": [
@@ -140,8 +149,16 @@ POWERUP_DURATION = 10.0      # seconds for timed power-ups
 
 LIVES_START = 3
 
+# Sound effects — generated into assets/ by make_sounds.py
+SOUND_NAMES = ("wall", "paddle", "brick", "launch", "powerup",
+               "life_lost", "level_up", "game_over", "win")
+
+# Level intro banner
+INTRO_DURATION = 2.0  # seconds each level banner is shown
+
 # Game states
 STATE_MENU, STATE_SERVE, STATE_PLAY, STATE_WIN, STATE_LOSE = range(5)
+STATE_INTRO = 5  # level banner is on screen
 
 # ---------------------------------------------------------------------------
 # Entities
@@ -207,10 +224,14 @@ class Ball:
         self.speed = speed
 
     def update(self, dt, paddle):
+        """Advance the ball; returns a set of collision events
+        ("wall" and/or "paddle") for the game to react to."""
         if self.stuck:
             self.x = paddle.center()[0]
             self.y = paddle.y - BALL_RADIUS - 1
-            return
+            return set()
+
+        events = set()
 
         # Sub-step so a fast ball can't tunnel through bricks/paddle.
         dist = math.hypot(self.vx, self.vy) * dt
@@ -225,12 +246,15 @@ class Ball:
             if self.x - BALL_RADIUS < 0:
                 self.x = BALL_RADIUS
                 self.vx = abs(self.vx)
+                events.add("wall")
             elif self.x + BALL_RADIUS > WIDTH:
                 self.x = WIDTH - BALL_RADIUS
                 self.vx = -abs(self.vx)
+                events.add("wall")
             if self.y - BALL_RADIUS < 0:
                 self.y = BALL_RADIUS
                 self.vy = abs(self.vy)
+                events.add("wall")
 
             # Paddle: reflect with angle based on hit position
             pr = paddle.rect()
@@ -245,6 +269,9 @@ class Ball:
                 angle = math.radians(-90 + offset * PADDLE_MAX_BOUNCE_DEG)
                 self.vx = math.cos(angle) * self.speed
                 self.vy = math.sin(angle) * self.speed
+                events.add("paddle")
+
+        return events
 
     def hits_rect(self, rect):
         cx = max(rect.left, min(self.x, rect.right))
@@ -378,6 +405,7 @@ class Game:
         self.font_big = pygame.font.SysFont(None, 64)
         self.font_mid = pygame.font.SysFont(None, 34)
         self.font_small = pygame.font.SysFont(None, 24)
+        self.sounds = self.load_sounds()
         self.state = STATE_MENU
         self.time = 0.0  # in-game seconds, only advances in serve/play states
         self.reset(full=True)
@@ -385,6 +413,28 @@ class Game:
     # -- setup ------------------------------------------------------------
     def level_def(self):
         return LEVELS[self.level - 1]
+
+    # -- sound ------------------------------------------------------------
+    @staticmethod
+    def load_sounds():
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+        sounds = {}
+        for name in SOUND_NAMES:
+            path = os.path.join(base, name + ".wav")
+            if os.path.exists(path):
+                try:
+                    sounds[name] = pygame.mixer.Sound(path)
+                except Exception:
+                    pass  # no audio device — the game still runs silently
+        return sounds
+
+    def play_sound(self, name):
+        sound = self.sounds.get(name)
+        if sound is not None:
+            try:
+                sound.play()
+            except Exception:
+                pass
 
     def reset(self, full=True):
         if full:
@@ -394,8 +444,14 @@ class Game:
         self.powerups = []
         self.score = 0 if full else self.score
         self.lives = LIVES_START if full else self.lives
+        self.start_level()
+
+    def start_level(self):
         self.build_bricks()
-        self.serve()
+        self.balls = []
+        self.powerups = []
+        self.intro_timer = INTRO_DURATION
+        self.state = STATE_INTRO
 
     def build_bricks(self):
         level = self.level_def()
@@ -480,6 +536,11 @@ class Game:
             )
 
     def update(self, dt):
+        if self.state == STATE_INTRO:
+            self.intro_timer -= dt
+            if self.intro_timer <= 0:
+                self.serve()
+            return
         if self.state not in (STATE_SERVE, STATE_PLAY):
             return
         self.time += dt
@@ -488,7 +549,11 @@ class Game:
         self.handle_paddle_input(dt, keys)
 
         for ball in self.balls:
-            ball.update(dt, self.paddle)
+            for event in ball.update(dt, self.paddle):
+                if event == "paddle":
+                    self.play_sound("paddle")
+                elif event == "wall":
+                    self.play_sound("wall")
 
         # Ball vs bricks
         for ball in self.balls:
@@ -498,6 +563,7 @@ class Game:
                 if not brick.alive or not ball.hits_rect(brick.rect):
                     continue
                 ball.bounce_off_rect(brick.rect)
+                self.play_sound("brick")
                 if brick.hit():
                     self.score += brick.points
                     ball.set_speed(ball.speed + BALL_SPEED_GAIN_PER_BRICK)
@@ -513,8 +579,10 @@ class Game:
                 self.lives -= 1
                 if self.lives <= 0:
                     self.state = STATE_LOSE
+                    self.play_sound("game_over")
                 else:
                     self.serve()
+                    self.play_sound("life_lost")
                 return
 
         # Power-ups falling / caught
@@ -523,6 +591,7 @@ class Game:
             if pu.rect.bottom > HEIGHT:
                 self.powerups.remove(pu)
             elif pu.rect.colliderect(self.paddle.rect()):
+                self.play_sound("powerup")
                 self.on_powerup_caught(pu.kind)
                 self.powerups.remove(pu)
 
@@ -530,11 +599,12 @@ class Game:
         if not self.destructible_bricks(self.bricks):
             if self.level < len(LEVELS):
                 self.level += 1
-                self.build_bricks()
-                self.serve()
+                self.start_level()
+                self.play_sound("level_up")
             else:
                 self.score += self.lives * 100  # small life bonus
                 self.state = STATE_WIN
+                self.play_sound("win")
 
     # -- draw -------------------------------------------------------------
     def draw(self):
@@ -564,6 +634,11 @@ class Game:
                              (WIDTH // 2, HEIGHT // 2 + 10))
             self.render_text("Press SPACE to start", self.font_mid, COLOR_TEXT,
                              (WIDTH // 2, HEIGHT // 2 + 60))
+        elif self.state == STATE_INTRO:
+            self.render_text(f"LEVEL {self.level}", self.font_big, COLOR_TEXT,
+                             (WIDTH // 2, HEIGHT // 2 - 30))
+            self.render_text(self.level_def()["name"], self.font_mid,
+                             (120, 200, 255), (WIDTH // 2, HEIGHT // 2 + 30))
         elif self.state == STATE_SERVE:
             self.render_text("Press SPACE to launch", self.font_small,
                              COLOR_TEXT_DIM, (WIDTH // 2, HEIGHT // 2 + 40))
@@ -604,6 +679,7 @@ class Game:
                             if ball.stuck:
                                 ball.launch()
                         self.state = STATE_PLAY
+                        self.play_sound("launch")
 
                 if event.key == pygame.K_r and self.state in (STATE_WIN, STATE_LOSE):
                     self.reset(full=True)
@@ -614,6 +690,7 @@ class Game:
                         if ball.stuck:
                             ball.launch()
                     self.state = STATE_PLAY
+                    self.play_sound("launch")
 
         return True
 
@@ -629,6 +706,8 @@ class Game:
 
 
 def main():
+    # Match the generated WAVs (44.1 kHz, 16-bit, mono) before init
+    pygame.mixer.pre_init(44100, -16, 1, 512)
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Breakout")
