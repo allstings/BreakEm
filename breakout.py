@@ -325,12 +325,15 @@ class Brick:
         self.indestructible = indestructible
 
     def hit(self):
+        """Apply one hit. Returns True only if this hit destroyed the brick.
+        Indestructible bricks absorb the hit and return False."""
         if self.indestructible:
-            return True
+            return False
         self.hp -= 1
         if self.hp <= 0:
             self.alive = False
-        return self.alive
+            return True
+        return False
 
     def draw(self, surface):
         if not self.alive:
@@ -439,14 +442,14 @@ class Game:
     def reset(self, full=True):
         if full:
             self.level = 1
-        self.paddle = Paddle()
-        self.balls = []
-        self.powerups = []
         self.score = 0 if full else self.score
         self.lives = LIVES_START if full else self.lives
         self.start_level()
 
     def start_level(self):
+        # Fresh paddle each level: clears any timed power-up bonuses
+        # (e.g. the wide paddle) and recenters it.
+        self.paddle = Paddle()
         self.build_bricks()
         self.balls = []
         self.powerups = []
