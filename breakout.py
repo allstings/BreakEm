@@ -428,8 +428,15 @@ class Game:
 
     # -- sound ------------------------------------------------------------
     @staticmethod
+    def asset_dir():
+        # PyInstaller one-file bundles extract resources to sys._MEIPASS
+        if getattr(sys, "frozen", False):
+            return sys._MEIPASS
+        return os.path.dirname(os.path.abspath(__file__))
+
+    @staticmethod
     def load_sounds():
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+        base = os.path.join(Game.asset_dir(), "assets")
         sounds = {}
         for name in SOUND_NAMES:
             path = os.path.join(base, name + ".wav")
