@@ -417,6 +417,15 @@ class Game:
     def level_def(self):
         return LEVELS[self.level - 1]
 
+    def release_stuck_balls(self):
+        """Launch any stuck balls. Returns True if at least one was launched."""
+        launched = False
+        for ball in self.balls:
+            if ball.stuck:
+                ball.launch()
+                launched = True
+        return launched
+
     # -- sound ------------------------------------------------------------
     @staticmethod
     def load_sounds():
@@ -510,6 +519,7 @@ class Game:
                     continue
                 for extra in (-1, 1):
                     clone = Ball(ball.x, ball.y)
+                    clone.stuck = False  # clones fly immediately, never ride the paddle
                     base = math.degrees(math.atan2(ball.vy, ball.vx))
                     clone.set_speed(ball.speed)
                     angle = math.radians(base + extra * 20)
@@ -677,23 +687,23 @@ class Game:
                 if event.key == pygame.K_SPACE:
                     if self.state == STATE_MENU:
                         self.reset(full=True)
-                    elif self.state == STATE_SERVE:
-                        for ball in self.balls:
-                            if ball.stuck:
-                                ball.launch()
-                        self.state = STATE_PLAY
-                        self.play_sound("launch")
+                    elif self.state in (STATE_SERVE, STATE_PLAY):
+                        if self.release_stuck_balls():
+                            self.play_sound("launch")
+                        if self.state == STATE_SERVE:
+                            self.state = STATE_PLAY
 
                 if event.key == pygame.K_r and self.state in (STATE_WIN, STATE_LOSE):
                     self.reset(full=True)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self.state == STATE_SERVE:
-                    for ball in self.balls:
-                        if ball.stuck:
-                            ball.launch()
+                    self.release_stuck_balls()
                     self.state = STATE_PLAY
                     self.play_sound("launch")
+                elif self.state == STATE_PLAY:
+                    if self.release_stuck_balls():
+                        self.play_sound("launch")
 
         return True
 
