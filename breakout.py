@@ -499,6 +499,8 @@ class Game:
                     ))
 
     def serve(self):
+        # Fresh paddle for every new ball (clears wide-paddle and centers position)
+        self.paddle = Paddle()
         base_speed = BALL_SPEED_START * self.level_def()["speed"]
         ball = Ball(self.paddle.center()[0], self.paddle.y, speed=base_speed)
         ball.stuck = True
