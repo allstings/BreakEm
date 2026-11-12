@@ -56,6 +56,11 @@ BALL_SPEED_GAIN_PER_BRICK = 6
 BALL_SPEED_MAX = 680
 PADDLE_MAX_BOUNCE_DEG = 60  # steepest paddle deflection (degrees from vertical)
 
+# Speed-modifier power-ups (FAST / SLOW) — time limited, applied to all live balls
+SPEED_MODIFIER_DURATION = 5.0   # seconds a boost/slow effect lasts
+SPEED_BOOST_SCALE = 1.5         # FAST: +50% ball speed
+SPEED_SLOW_SCALE = 0.5          # SLOW: -50% ball speed
+
 # Bricks
 BRICK_COLS = 8
 BRICK_ROWS = 6
@@ -204,24 +209,49 @@ class Ball:
         self.vx = 0.0
         self.vy = 0.0
         self.speed = speed
+        self.speed_scale = 1.0  # multiplicative FAST/SLOW modifier
         self.stuck = True  # riding on the paddle until launched
 
     def launch(self, angle_offset=0.0):
         """Launch upward at a random-ish angle; angle_offset in degrees."""
         angle = math.radians(-90 + angle_offset + random.uniform(-12, 12))
-        self.vx = math.cos(angle) * self.speed
-        self.vy = math.sin(angle) * self.speed
+        v = self.speed * self.speed_scale
+        self.vx = math.cos(angle) * v
+        self.vy = math.sin(angle) * v
         self.stuck = False
 
     def set_speed(self, speed):
+        """Set the base speed, rescaling velocity while preserving direction.
+
+        The current FAST/SLOW modifier is kept on top of the new base speed,
+        so a brick hit (which raises the base) does not cancel a boost/slow.
+        """
         speed = min(BALL_SPEED_MAX, speed)
         if self.stuck or (self.vx == 0 and self.vy == 0):
             self.speed = speed
             return
-        factor = speed / max(1e-6, math.hypot(self.vx, self.vy))
+        target = speed * self.speed_scale
+        factor = target / max(1e-6, math.hypot(self.vx, self.vy))
         self.vx *= factor
         self.vy *= factor
         self.speed = speed
+
+    def set_speed_scale(self, scale):
+        """Apply a multiplicative FAST/SLOW modifier, preserving direction.
+
+        The modifier composes with the base `speed`, so it never fights the
+        per-brick speed gain. A no-op while the ball is stuck / not moving.
+        """
+        scale = max(0.05, scale)
+        if scale == self.speed_scale:
+            return
+        self.speed_scale = scale
+        if self.stuck or (self.vx == 0 and self.vy == 0):
+            return
+        target = self.speed * scale
+        factor = target / max(1e-6, math.hypot(self.vx, self.vy))
+        self.vx *= factor
+        self.vy *= factor
 
     def update(self, dt, paddle):
         """Advance the ball; returns a set of collision events
@@ -267,8 +297,9 @@ class Ball:
                 offset = (self.x - paddle.center()[0]) / (paddle.width / 2)
                 offset = max(-1.0, min(1.0, offset))
                 angle = math.radians(-90 + offset * PADDLE_MAX_BOUNCE_DEG)
-                self.vx = math.cos(angle) * self.speed
-                self.vy = math.sin(angle) * self.speed
+                v = self.speed * self.speed_scale
+                self.vx = math.cos(angle) * v
+                self.vy = math.sin(angle) * v
                 events.add("paddle")
 
         return events
@@ -368,6 +399,8 @@ class PowerUp:
     TYPES = {
         "W": "wide",    # wider paddle for POWERUP_DURATION seconds
         "M": "multi",   # splits each live ball into three
+        "F": "fast",    # +50% ball speed for SPEED_MODIFIER_DURATION seconds
+        "S": "slow",    # -50% ball speed for SPEED_MODIFIER_DURATION seconds
     }
     LETTERS = list(TYPES.keys())
 
@@ -411,6 +444,10 @@ class Game:
         self.sounds = self.load_sounds()
         self.state = STATE_MENU
         self.time = 0.0  # in-game seconds, only advances in serve/play states
+        # FAST/SLOW speed modifiers (time limited)
+        self.speed_boost_until = 0.0   # game-time at which the FAST effect expires
+        self.speed_slow_until = 0.0    # game-time at which the SLOW effect expires
+        self.active_speed_scale = 1.0  # currently applied multiplier
         self.reset(full=True)
 
     # -- setup ------------------------------------------------------------
@@ -462,10 +499,17 @@ class Game:
         self.lives = LIVES_START if full else self.lives
         self.start_level()
 
+    def reset_speed_modifiers(self):
+        """Clear any active FAST/SLOW effects (used on serve / new level)."""
+        self.speed_boost_until = 0.0
+        self.speed_slow_until = 0.0
+        self.active_speed_scale = 1.0
+
     def start_level(self):
         # Fresh paddle each level: clears any timed power-up bonuses
         # (e.g. the wide paddle) and recenters it.
         self.paddle = Paddle()
+        self.reset_speed_modifiers()
         self.build_bricks()
         self.balls = []
         self.powerups = []
@@ -501,6 +545,7 @@ class Game:
     def serve(self):
         # Fresh paddle for every new ball (clears wide-paddle and centers position)
         self.paddle = Paddle()
+        self.reset_speed_modifiers()  # back to normal state after losing a ball
         base_speed = BALL_SPEED_START * self.level_def()["speed"]
         ball = Ball(self.paddle.center()[0], self.paddle.y, speed=base_speed)
         ball.stuck = True
@@ -521,6 +566,18 @@ class Game:
     def on_powerup_caught(self, kind):
         if kind == "wide":
             self.paddle.apply_wide(self.time)
+        elif kind == "fast":
+            # Boost: +50% speed, lasts SPEED_MODIFIER_DURATION seconds.
+            # Cancels an active slow (the two are mutually exclusive).
+            self.speed_boost_until = max(
+                self.speed_boost_until, self.time + SPEED_MODIFIER_DURATION)
+            self.speed_slow_until = 0.0
+        elif kind == "slow":
+            # Slow: -50% speed, lasts SPEED_MODIFIER_DURATION seconds.
+            # Cancels an active boost.
+            self.speed_slow_until = max(
+                self.speed_slow_until, self.time + SPEED_MODIFIER_DURATION)
+            self.speed_boost_until = 0.0
         elif kind == "multi":
             new_balls = []
             for ball in self.balls:
@@ -529,16 +586,37 @@ class Game:
                 for extra in (-1, 1):
                     clone = Ball(ball.x, ball.y)
                     clone.stuck = False  # clones fly immediately, never ride the paddle
+                    clone.speed_scale = self.active_speed_scale  # inherit FAST/SLOW
                     base = math.degrees(math.atan2(ball.vy, ball.vx))
                     clone.set_speed(ball.speed)
                     angle = math.radians(base + extra * 20)
-                    clone.vx = math.cos(angle) * clone.speed
-                    clone.vy = math.sin(angle) * clone.speed
+                    v = clone.speed * clone.speed_scale
+                    clone.vx = math.cos(angle) * v
+                    clone.vy = math.sin(angle) * v
                     if clone.vy > 0:  # keep multi-ball heading upward
                         clone.vy = -abs(clone.vy)
                     new_balls.append(clone)
             self.balls.extend(new_balls)
         # unknown kinds: silently ignore, so partial power-ups never crash
+
+    def update_speed_timers(self):
+        """Resolve the active FAST/SLOW modifier each frame and apply it to
+        every live ball.
+
+        Boost and slow are mutually exclusive. The multiplier is only pushed
+        onto the balls when it actually changes, so expiry (time passing the
+        `*_until` mark) reverts balls to normal speed automatically.
+        """
+        if self.time < self.speed_boost_until:
+            active = SPEED_BOOST_SCALE
+        elif self.time < self.speed_slow_until:
+            active = SPEED_SLOW_SCALE
+        else:
+            active = 1.0
+        if active != self.active_speed_scale:
+            self.active_speed_scale = active
+            for ball in self.balls:
+                ball.set_speed_scale(active)
 
     # -- update -----------------------------------------------------------
     def handle_paddle_input(self, dt, keys):
@@ -566,6 +644,7 @@ class Game:
         if self.state not in (STATE_SERVE, STATE_PLAY):
             return
         self.time += dt
+        self.update_speed_timers()  # apply/expire the active FAST/SLOW effect
 
         keys = pygame.key.get_pressed()
         self.handle_paddle_input(dt, keys)

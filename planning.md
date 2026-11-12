@@ -25,16 +25,16 @@ The goal of this project is to enhance the existing "Breakout" game by adding su
 ## Technical Tasks
 
 ### Phase 1: Analysis & Preparation
-- [ ] Review `breakout.py` to identify the best locations for new variables and logic.
-- [ ] Identify how to cleanly handle the `speed_boost` and `speed_reduce` timer to avoid conflicts with brick hits.
+- [x] Review `breakout.py` to identify the best locations for new variables and logic.
+- [x] Identify how to cleanly handle the `speed_boost` and `speed_reduce` timer to avoid conflicts with brick hits.
 
 ### Phase 2: Implementation
-- [ ] Update `PowerUp.TYPES` to include `FAST` and `SLOW`.
-- [ ] Modify `Game.on_powerup_caught` to handle the new power-up types.
-- [ ] Update `Game.serve` to reset session-limited flags.
-- [ ] Implement the `speed_boost` and `speed_reduce` timers logic in `Game.update`.
+- [x] Update `PowerUp.TYPES` to include `FAST` and `SLOW`.
+- [x] Modify `Game.on_powerup_caught` to handle the new power-up types.
+- [x] Update `Game.serve` to reset session-limited flags.
+- [x] Implement the `speed_boost` and `speed_reduce` timers logic in `Game.update`.
 
 ### Phase 3: Testing & Refinement
-- [ ] Verify that "Boost" correctly applies to all balls and expires after 5 seconds.
-- [ ] Verify that "Slow" correctly applies to all balls and expires after 5 seconds.
-- [ ] Ensure no regressions in existing power-up behaviors (Wide and Multi).
+- [x] Verify that "Boost" correctly applies to all balls and expires after 5 seconds.
+- [x] Verify that "Slow" correctly applies to all balls and expires after 5 seconds.
+- [x] Ensure no regressions in existing power-up behaviors (Wide and Multi).
