@@ -1,10 +1,10 @@
 """
-Procedural sound-effect generator for Breakout.
+Procedural sound-effect generator for BreakEm.
 
 No external assets or libraries needed — every effect is synthesized
 from sine sweeps, notes and filtered noise using only the Python
 standard library, then written as 16-bit mono 44.1 kHz WAV files
-into ./assets/ where breakout.py loads them at startup.
+into ./assets/ where breakem.py loads them at startup.
 
 Run:  python make_sounds.py
 """

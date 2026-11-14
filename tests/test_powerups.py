@@ -1,4 +1,4 @@
-"""Headless functional test for the FAST/SLOW power-ups in breakout.py.
+"""Headless functional test for the FAST/SLOW power-ups in breakem.py.
 
 Runs without a display (SDL dummy drivers). The core timer/scale logic is
 driven deterministically by calling `Game.update_speed_timers()` directly
@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import math  # noqa: E402
 import pygame  # noqa: E402
-import breakout as B  # noqa: E402
+import breakem as B  # noqa: E402
 
 FAILURES = []
 

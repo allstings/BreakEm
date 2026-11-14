@@ -1,4 +1,4 @@
-# Breakout
+# BreakEm
 
 A classic brick-breaking arcade game built with **Python** and **pygame**.
 Clear the bricks, juggle the power-ups, and survive all five increasingly
@@ -37,7 +37,7 @@ That's it. No other runtime dependencies.
 
 ```bash
 pip install pygame
-python breakout.py
+python breakem.py
 ```
 
 ### Running the tests
@@ -57,11 +57,11 @@ check and exit non-zero on any failure.
 A ready-to-run, single-file build is included:
 
 ```
-dist/Breakout.exe
+dist/BreakEm.exe
 ```
 
 Double-click it (Windows) — no Python installation required. A zip of the
-build is also available at `dist/Breakout.zip`.
+build is also available at `dist/BreakEm.zip`.
 
 ---
 
@@ -127,16 +127,16 @@ around.
 ## Project structure
 
 ```
-Breakout/
-├── breakout.py            # the game (single self-contained module)
+BreakEm/
+├── breakem.py            # the game (single self-contained module)
 ├── make_sounds.py         # procedural sound-effect generator
 ├── assets/                # generated .wav sound effects (9 files)
 ├── planning.md            # power-up enhancement plan & checklist
 ├── tests/                 # headless power-up test harnesses
 │   ├── test_double_paddle.py
 │   └── test_powerups.py
-├── Breakout.spec          # PyInstaller build configuration
-├── dist/                  # build output (Breakout.exe, Breakout.zip)
+├── BreakEm.spec          # PyInstaller build configuration
+├── dist/                  # build output (BreakEm.exe, BreakEm.zip)
 └── build/                 # PyInstaller intermediate files
 ```
 
@@ -168,10 +168,10 @@ pip install pyinstaller
 Build the single-file, windowed (no console) executable:
 
 ```bash
-pyinstaller Breakout.spec
+pyinstaller BreakEm.spec
 ```
 
-The result is written to `dist/Breakout.exe`. The `assets/` folder is bundled
+The result is written to `dist/BreakEm.exe`. The `assets/` folder is bundled
 into the exe automatically (via the spec's `datas`), so the build is fully
 self-contained.
 
@@ -182,7 +182,7 @@ self-contained.
 
 ## Design notes
 
-- **One file, one idea.** `breakout.py` is intentionally self-contained:
+- **One file, one idea.** `breakem.py` is intentionally self-contained:
   config constants at the top, then `Paddle`, `Ball`, `Brick`, `PowerUp`,
   and `Game` classes. Each entity has a single `draw` method, so swapping in
   sprites later is a drop-in change.

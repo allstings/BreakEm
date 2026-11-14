@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['breakout.py'],
+    ['breakem.py'],
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets')],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Breakout',
+    name='BreakEm',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

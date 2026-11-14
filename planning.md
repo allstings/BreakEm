@@ -1,16 +1,16 @@
-# Breakout Power-Up Enhancement Planning
+# BreakEm Power-Up Enhancement Planning
 
 ## Project Overview
-The goal of this project is to enhance the existing "Breakout" game by adding
+The goal of this project is to enhance the existing "BreakEm" game by adding
 more power-ups, one iteration at a time. The tooling stays the same — plain
-Python with `pygame` in `breakout.py`, no new dependencies or assets.
+Python with `pygame` in `breakem.py`, no new dependencies or assets.
 
 Power-ups come in two flavors:
 1. **Time limited** — lasts for a defined duration (in seconds) once obtained.
 2. **Session limited** — lasts until the ball is lost and the game resets to its normal state.
 
 ## Current State
-- The game is implemented in `breakout.py` using `pygame`.
+- The game is implemented in `breakem.py` using `pygame`.
 - Power-ups implemented so far:
   - **Wide** — time limited (10 s), wider paddle.
   - **Multi** — instant, splits each live ball into three.
@@ -38,7 +38,7 @@ Power-ups come in two flavors:
 #### Technical Tasks (completed)
 
 Phase 1 — Analysis & Preparation
-- [x] Review `breakout.py` to identify the best locations for new variables and logic.
+- [x] Review `breakem.py` to identify the best locations for new variables and logic.
 - [x] Identify how to cleanly handle the `speed_boost` and `speed_reduce` timer to avoid conflicts with brick hits.
 
 Phase 2 — Implementation

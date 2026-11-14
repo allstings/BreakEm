@@ -1,4 +1,4 @@
-"""Headless functional test for the DOUBLE paddle power-up in breakout.py.
+"""Headless functional test for the DOUBLE paddle power-up in breakem.py.
 
 Runs without a display (SDL dummy drivers). Verifies:
   * layout = two base-width paddles with a one-paddle-width central gap
@@ -21,7 +21,7 @@ os.environ["SDL_AUDIODRIVER"] = "dummy"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame  # noqa: E402
-import breakout as B  # noqa: E402
+import breakem as B  # noqa: E402
 
 FAILURES = []
 

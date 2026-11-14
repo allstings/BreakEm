@@ -1,5 +1,5 @@
 """
-Breakout — a classic brick-breaking game built with pygame.
+BreakEm — a classic brick-breaking game built with pygame.
 
 Controls:
     Mouse or Left/Right arrow keys     — move paddle
@@ -884,7 +884,7 @@ def main():
     pygame.mixer.pre_init(44100, -16, 1, 512)
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Breakout")
+    pygame.display.set_caption("BreakEm")
     Game(screen).run()
 
 
