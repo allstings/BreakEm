@@ -40,6 +40,18 @@ pip install pygame
 python breakout.py
 ```
 
+### Running the tests
+
+Headless functional tests (no display needed) live in `tests/`:
+
+```bash
+python tests/test_double_paddle.py   # Double paddle power-up
+python tests/test_powerups.py        # Fast/Slow/Wide/Multi power-ups
+```
+
+Both scripts can be run from any directory; they print `[PASS]/[FAIL]` per
+check and exit non-zero on any failure.
+
 ### Prebuilt executable
 
 A ready-to-run, single-file build is included:
@@ -119,6 +131,9 @@ Breakout/
 ├── make_sounds.py         # procedural sound-effect generator
 ├── assets/                # generated .wav sound effects (9 files)
 ├── planning.md            # power-up enhancement plan & checklist
+├── tests/                 # headless power-up test harnesses
+│   ├── test_double_paddle.py
+│   └── test_powerups.py
 ├── Breakout.spec          # PyInstaller build configuration
 ├── dist/                  # build output (Breakout.exe, Breakout.zip)
 └── build/                 # PyInstaller intermediate files
