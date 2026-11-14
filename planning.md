@@ -12,10 +12,12 @@ Power-ups come in two flavors:
 ## Current State
 - The game is implemented in `breakout.py` using `pygame`.
 - Power-ups implemented so far:
-  - **Wide** — session limited (persists until the ball is lost / a new level), wider paddle.
+  - **Wide** — time limited (10 s), wider paddle.
   - **Multi** — instant, splits each live ball into three.
   - **Fast** — time limited (5 s), +50 % ball speed.
   - **Slow** — time limited (5 s), −50 % ball speed.
+  - **Double** — time limited (10 s), two paddles side-by-side with a one-paddle-width gap.
+- Test harnesses for the power-up behaviors live in `tests/` (headless, SDL dummy drivers).
 - The `PowerUp` class handles the falling and catching logic; `Game.on_powerup_caught`
   applies the effects of caught power-ups.
 - `Paddle` currently renders a **single** paddle and exposes one collision rect
@@ -52,7 +54,7 @@ Phase 3 — Testing & Refinement
 
 ---
 
-## Proposed Enhancement: Double Paddle
+## Implemented Enhancement: Double Paddle
 
 ### Overview
 A new **"Double"** power-up that **replaces the paddle** for a set duration —
@@ -101,26 +103,120 @@ gap in the middle**.
    ends the effect when it passes the expiry mark (shrinking back to normal while keeping its
    center). It is also cleared on `serve()` / `start_level()` like any fresh paddle.
 
-### Technical Tasks
+### Technical Tasks (completed)
 
 #### Phase 1: Analysis & Preparation
-- [ ] Review `Paddle` and `Ball.update` to plan how to expose multiple paddle rects and per-paddle deflection.
-- [ ] Decide the Wide/Double interaction (mutual exclusivity and width handling).
-- [ ] Confirm the existing fallen-ball logic already covers a ball dropping through the gap.
+- [x] Review `Paddle` and `Ball.update` to plan how to expose multiple paddle rects and per-paddle deflection.
+- [x] Decide the Wide/Double interaction (mutual exclusivity and width handling).
+- [x] Confirm the existing fallen-ball logic already covers a ball dropping through the gap.
 
 #### Phase 2: Implementation
-- [ ] Add `"D": "double"` to `PowerUp.TYPES`.
-- [ ] Extend `Paddle` for Double mode: store `double_until`, add `apply_double(now)`, and expose the active paddle rects plus per-rect centers (e.g. `rects()` / `centers()`).
-- [ ] Update `Paddle.draw` to render two side-by-side paddles with the central gap when active.
-- [ ] Update `Ball.update` to reflect off each active paddle rect (relative to that paddle's center) and let the ball pass through the central gap.
-- [ ] Update `Game.on_powerup_caught` to handle the `"double"` kind (set the timer, cancel a conflicting Wide).
-- [ ] Update the `serve()` / `start_level()` reset path so the Double effect is cleared like Wide.
-- [ ] Implement the Wide/Double mutual exclusivity.
+- [x] Add `"D": "double"` to `PowerUp.TYPES`.
+- [x] Extend `Paddle` for Double mode: store `double_until`, add `apply_double(now)`, and expose the active paddle rects plus per-rect centers (e.g. `rects()` / `centers()`).
+- [x] Update `Paddle.draw` to render two side-by-side paddles with the central gap when active.
+- [x] Update `Ball.update` to reflect off each active paddle rect (relative to that paddle's center) and let the ball pass through the central gap.
+- [x] Update `Game.on_powerup_caught` to handle the `"double"` kind (set the timer, cancel a conflicting Wide).
+- [x] Update the `serve()` / `start_level()` reset path so the Double effect is cleared like Wide.
+- [x] Implement the Wide/Double mutual exclusivity.
 
 #### Phase 3: Testing & Refinement
-- [ ] Verify the Double layout renders as two paddles with a one-paddle-width central gap.
-- [ ] Verify both side paddles bounce the ball like a normal paddle.
-- [ ] Verify a ball dropping through the central gap falls off and causes a ball loss.
-- [ ] Verify the effect expires after 10 s and the paddle returns to normal.
-- [ ] Verify serve / new level clears the Double effect.
-- [ ] Ensure no regressions in existing power-ups (Wide, Multi, Fast, Slow).
+- [x] Verify the Double layout renders as two paddles with a one-paddle-width central gap.
+- [x] Verify both side paddles bounce the ball like a normal paddle.
+- [x] Verify a ball dropping through the central gap falls off and causes a ball loss.
+- [x] Verify the effect expires after 10 s and the paddle returns to normal.
+- [x] Verify serve / new level clears the Double effect.
+- [x] Ensure no regressions in existing power-ups (Wide, Multi, Fast, Slow).
+
+Test harness: `tests/test_double_paddle.py` (31 checks, all passing).
+
+---
+
+## Implemented Enhancement: Time-Limited Wide Paddle (10 s)
+
+### Overview
+The **Wide** power-up is currently **session limited** — once caught it stays
+active until the ball is lost or a new level starts. This enhancement makes it
+**time limited**, matching the Double paddle: after catching it, the wide
+paddle stays active for **10 seconds**, then automatically reverts to the
+basic, stock paddle.
+
+- Duration: **10 s** of game time (the same clock-driven expiry pattern as
+  Double, e.g. the existing `POWERUP_DURATION` constant or a dedicated
+  `WIDE_DURATION = 10.0` constant).
+- On expiry the paddle **shrinks back to `PADDLE_WIDTH` while preserving its
+  visual center** (same recentering behavior already used by Double expiry).
+- Wide/Double **mutual exclusivity is unchanged** — catching one still cancels
+  the other; both are simply paddle replacements with their own timers.
+
+### Specification
+| Property   | Value |
+| ---------- | ----- |
+| Letter     | `W` (unchanged) |
+| Kind       | `wide` (unchanged) |
+| Type       | Paddle replacement, **time limited** (was: session limited) |
+| Duration   | **10 s** on the game clock |
+| Expiry     | Paddle reverts to the base single paddle, keeping its current center |
+| Reset      | Still cleared by `serve()` / `start_level()` as today (fresh `Paddle`) |
+
+### Design considerations
+1. **Reuse the existing expiry mechanism.** `Paddle.refresh(now)` is already
+   called every frame from `Game.update` and handles Double expiry. The change
+   is to make it also check `wide_until <= now` and revert Wide — no new
+   per-frame wiring or new clock plumbing needed.
+2. **`apply_wide(now)` sets a real expiry.** Today `wide_until` is set such
+   that it never expires (the `wide` check only looks at `wide_until > 0`,
+   never against the game clock). It should become `wide_until = now + 10.0`,
+   and the `wide` / `width` logic already compares against the stored mark —
+   only the value being stored and the expiry path change.
+3. **Center preservation on shrink.** When reverting from wide (width =
+   `PADDLE_WIDTH + PADDLE_WIDE_BONUS`) to base, adjust `paddle.x` so the
+   paddle's center stays put — identical technique to the Double expiry
+   recentering. This avoids a visible snap to the left.
+4. **Interaction with Double is unchanged.** The two remain mutually
+   exclusive; a Wide that expires simply removes the Wide effect and does not
+   reactivate Double (Double's own timer already expired or was cancelled
+   when Wide was caught).
+5. **Interaction with Multi / Fast / Slow.** None — they don't touch the
+   paddle. Losing the wide paddle early is not a ball loss, so there is no
+   state to reset on expiry beyond the paddle itself.
+6. **Behavior change note.** Wide will now wear off mid-life; previously a
+   player could hold it forever if they kept the ball in play. This is the
+   intended game-balance change.
+
+### Technical Tasks (completed)
+
+#### Phase 1: Analysis & Preparation
+- [x] Confirm how `wide_until` is currently set in `apply_wide` and where the
+      `wide` check happens (`Paddle.width` / `Paddle.draw`), to scope the edit.
+- [x] Confirm `Paddle.refresh(now)` is the single place to add the Wide expiry
+      check (mirroring the Double branch).
+- [x] Confirm `serve()` / `start_level()` already produce a fresh `Paddle`, so
+      the reset path needs no changes.
+
+#### Phase 2: Implementation
+- [x] Reuse the existing `POWERUP_DURATION = 10.0` constant (no new constant needed).
+- [x] `apply_wide(now)` already stores `wide_until = now + POWERUP_DURATION`; no change needed there.
+- [x] Extend `Paddle.refresh(now)` to expire Wide when `wide_until <= now`,
+      reverting to base width while preserving the paddle's center.
+- [x] Keep the Wide/Double mutual-exclusivity logic unchanged and re-verify it
+      still works with the real timer (catching Double still cancels Wide and
+      vice versa).
+
+#### Phase 3: Testing & Refinement
+- [x] Add checks to `tests/test_powerups.py` (sections 10 / 10b / 10c):
+      Wide is still active at t = 9 s, expired at t ≥ 10 s, expiry preserves
+      the paddle's visual center, and expiry returns `rects()` to a single
+      base-width rect.
+- [x] Verify serve / new level still clears Wide.
+- [x] Verify Wide/Double mutual exclusivity is unaffected.
+- [x] Ensure no regressions in existing power-ups (Multi, Fast, Slow, Double).
+- [x] Update `README.md` power-up table: Wide duration becomes "10 seconds".
+
+Test harness: `tests/test_powerups.py` (Wide checks in sections 10 / 10b /
+10c; all 70 checks across both harnesses passing).
+
+**Implementation note:** `apply_wide` was already storing a real game-clock
+expiry (`wide_until = now + POWERUP_DURATION`) — the only missing piece was
+the expiry branch in `Paddle.refresh(now)`, which now reverts Wide to the
+base width while preserving the paddle's visual center (same recentering
+technique as Double).

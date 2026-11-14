@@ -238,12 +238,18 @@ class Paddle:
         self.wide_until = 0.0  # WIDE and DOUBLE are mutually exclusive
 
     def refresh(self, now):
-        """Drive the time-based DOUBLE expiry (called every frame by the game).
+        """Drive the time-based WIDE / DOUBLE expiry (called every frame by the game).
 
         The paddle has no access to the game clock, so the game reports the
-        current time each frame; once it passes `double_until`, the DOUBLE
-        effect ends and the paddle shrinks back to normal, keeping its center.
+        current time each frame; once it passes an effect's expiry mark the
+        effect ends and the paddle shrinks back to its previous size, keeping
+        its visual center.
         """
+        if self.wide_until and now >= self.wide_until:
+            old_center = self.x + self.width / 2  # still the wide footprint
+            self.wide_until = 0.0
+            new_width = self.width  # wide is now off
+            self.x = max(0, min(WIDTH - new_width, old_center - new_width / 2))
         if not self.double_active or now < self.double_until:
             return
         old_center = self.x + self.width / 2  # still the double footprint
@@ -711,7 +717,7 @@ class Game:
             return
         self.time += dt
         self.update_speed_timers()  # apply/expire the active FAST/SLOW effect
-        self.paddle.refresh(self.time)  # expire the active DOUBLE effect
+        self.paddle.refresh(self.time)  # expire the active WIDE / DOUBLE effect
 
         keys = pygame.key.get_pressed()
         self.handle_paddle_input(dt, keys)

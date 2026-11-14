@@ -158,6 +158,42 @@ check("WIDE still works", game.paddle.width == w0 + B.PADDLE_WIDE_BONUS)
 game.on_powerup_caught("nonexistent_kind")  # must not raise
 check("unknown kind safely ignored", True)
 
+# 10. WIDE is time limited: expires after 10 s ------------------------------
+game = new_game()
+game.on_powerup_caught("wide")
+p = game.paddle
+check("WIDE active right after catch", p.wide)
+check("WIDE width = base + bonus", p.width == B.PADDLE_WIDTH + B.PADDLE_WIDE_BONUS)
+cx = p.center()[0]
+p.refresh(game.time + 9.0)
+check("WIDE still active at t+9 (<10s)", p.wide)
+p.refresh(game.time + 10.0)
+check("WIDE expired at t+10 (>=10s)", not p.wide)
+check("WIDE expiry: width back to base", p.width == B.PADDLE_WIDTH)
+check("WIDE expiry: single base rect",
+      len(p.rects()) == 1 and p.rects()[0].width == B.PADDLE_WIDTH)
+check("WIDE expiry preserves visual center", abs(p.center()[0] - cx) < 1e-6,
+      f"center {cx}->{p.center()[0]}")
+
+# 10b. Integration: real Game.update() frames expire Wide ------------------
+game = new_game()
+game.balls = []  # no ball, so a ball-loss/serve can't clear it first
+game.on_powerup_caught("wide")
+check("integration: WIDE active", game.paddle.wide)
+for _ in range(int(11 * 60)):
+    game.update(1.0 / 60.0)
+check("integration: WIDE expired after ~11s of game time",
+      not game.paddle.wide)
+check("integration: paddle back to base width",
+      game.paddle.width == B.PADDLE_WIDTH)
+
+# 10c. serve() still clears Wide (fresh paddle) -----------------------------
+game = new_game()
+game.on_powerup_caught("wide")
+check("serve: WIDE active before serve", game.paddle.wide)
+game.serve()
+check("serve clears WIDE", not game.paddle.wide)
+
 # 9. Integration: a real Game.update() frame applies the effect ------------
 game = new_game()
 ball = make_ball(game, 380)
