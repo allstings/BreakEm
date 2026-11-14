@@ -12,7 +12,7 @@ Power-ups come in two flavors:
 ## Current State
 - The game is implemented in `breakout.py` using `pygame`.
 - Power-ups implemented so far:
-  - **Wide** — time limited (10 s), wider paddle.
+  - **Wide** — session limited (persists until the ball is lost / a new level), wider paddle.
   - **Multi** — instant, splits each live ball into three.
   - **Fast** — time limited (5 s), +50 % ball speed.
   - **Slow** — time limited (5 s), −50 % ball speed.
@@ -71,7 +71,7 @@ gap in the middle**.
 | Letter     | `D` |
 | Kind       | `double` |
 | Type       | Paddle replacement, **time limited** |
-| Duration   | 10 s (`POWERUP_DURATION`, same as Wide) |
+| Duration   | **10 s** (`POWERUP_DURATION`) — a real game-clock timeout (distinct from Wide, which persists until reset) |
 | Layout     | Two paddles, each one base paddle wide, with a **one-paddle-width gap in the middle** (total footprint = 3 × `PADDLE_WIDTH`) |
 | Movement   | The two paddles move as a **single unit**, keeping the gap centered |
 | Bounce     | Each side paddle reflects the ball normally (angle deflection relative to the *struck* paddle) |
@@ -96,7 +96,10 @@ gap in the middle**.
 5. **Interaction with Multi / Fast / Slow.** Independent (they don't touch the
    paddle), so no direct conflict — but losing a ball is more likely with the gap
    open, so Double is riskier during multi-ball play.
-6. **Reset lifecycle.** Cleared on `serve()` and `start_level()`, matching Wide.
+6. **Reset & expiry lifecycle.** The DOUBLE effect expires after 10 s. Because `Paddle` has no
+   access to the game clock, `Game.update` reports the current time each frame and the paddle
+   ends the effect when it passes the expiry mark (shrinking back to normal while keeping its
+   center). It is also cleared on `serve()` / `start_level()` like any fresh paddle.
 
 ### Technical Tasks
 

@@ -176,14 +176,43 @@ class Paddle:
         self.height = PADDLE_HEIGHT
         self.y = HEIGHT - PADDLE_MARGIN_BOTTOM - PADDLE_HEIGHT
         self.x = (WIDTH - self.base_width) // 2
-        self.wide_until = 0.0  # game-time at which WIDE bonus expires
+        self.wide_until = 0.0    # game-time at which the WIDE bonus expires
+        self.double_until = 0.0  # game-time at which the DOUBLE effect expires
+        self.double_active = False  # current DOUBLE state (Game drives expiry)
+
+    # -- mode / geometry ---------------------------------------------------
+    @property
+    def wide(self):
+        return self.wide_until > 0
+
+    @property
+    def double(self):
+        return self.double_active
 
     @property
     def width(self):
-        return self.base_width + (PADDLE_WIDE_BONUS if self.wide_until > 0 else 0)
+        # Total controllable footprint. DOUBLE spans two paddles plus a
+        # one-paddle-width central gap, so it is three base widths wide.
+        if self.double:
+            return self.base_width * 3
+        return self.base_width + (PADDLE_WIDE_BONUS if self.wide else 0)
+
+    def rects(self):
+        """Collision + draw rects for the active paddle mode.
+
+        Normal / WIDE: a single rect. DOUBLE: two paddles with an open
+        one-paddle-width gap in the middle (the ball can fall through it).
+        """
+        if self.double:
+            left = pygame.Rect(int(self.x), self.y, self.base_width, self.height)
+            right = pygame.Rect(int(self.x) + 2 * self.base_width, self.y,
+                                self.base_width, self.height)
+            return [left, right]
+        return [pygame.Rect(int(self.x), self.y, int(self.width), self.height)]
 
     def rect(self):
-        return pygame.Rect(int(self.x), self.y, int(self.width), self.height)
+        # Primary (leftmost) paddle rect — kept for simple consumers.
+        return self.rects()[0]
 
     def center(self):
         return self.x + self.width / 2, self.y + self.height / 2
@@ -191,15 +220,43 @@ class Paddle:
     def move(self, dx):
         self.x = max(0, min(WIDTH - self.width, self.x + dx))
 
+    def _recenter(self, new_width):
+        """Keep the same visual center when the footprint changes size."""
+        center = self.x + self.width / 2
+        self.x = max(0, min(WIDTH - new_width, center - new_width / 2))
+
     def apply_wide(self, now):
+        self._recenter(self.base_width + PADDLE_WIDE_BONUS)
         self.wide_until = max(self.wide_until, now + POWERUP_DURATION)
+        self.double_until = 0.0      # WIDE and DOUBLE are mutually exclusive
+        self.double_active = False
+
+    def apply_double(self, now):
+        self._recenter(self.base_width * 3)
+        self.double_until = now + POWERUP_DURATION
+        self.double_active = True
+        self.wide_until = 0.0  # WIDE and DOUBLE are mutually exclusive
+
+    def refresh(self, now):
+        """Drive the time-based DOUBLE expiry (called every frame by the game).
+
+        The paddle has no access to the game clock, so the game reports the
+        current time each frame; once it passes `double_until`, the DOUBLE
+        effect ends and the paddle shrinks back to normal, keeping its center.
+        """
+        if not self.double_active or now < self.double_until:
+            return
+        old_center = self.x + self.width / 2  # still the double footprint
+        self.double_active = False
+        self.double_until = 0.0
+        new_width = self.width  # double is now off (wide was cleared earlier)
+        self.x = max(0, min(WIDTH - new_width, old_center - new_width / 2))
 
     def draw(self, surface):
-        rect = self.rect()
-        wide = self.wide_until > 0
-        color = (120, 200, 255) if wide else COLOR_PADDLE
-        pygame.draw.rect(surface, color, rect, border_radius=8)
-        pygame.draw.rect(surface, COLOR_WALL, rect, width=1, border_radius=8)
+        color = (120, 200, 255) if (self.wide or self.double) else COLOR_PADDLE
+        for rect in self.rects():
+            pygame.draw.rect(surface, color, rect, border_radius=8)
+            pygame.draw.rect(surface, COLOR_WALL, rect, width=1, border_radius=8)
 
 
 class Ball:
@@ -286,21 +343,25 @@ class Ball:
                 self.vy = abs(self.vy)
                 events.add("wall")
 
-            # Paddle: reflect with angle based on hit position
-            pr = paddle.rect()
-            if (
-                self.vy > 0
-                and pr.left - BALL_RADIUS <= self.x <= pr.right + BALL_RADIUS
-                and pr.top - BALL_RADIUS <= self.y <= pr.bottom + BALL_RADIUS
-            ):
-                self.y = pr.top - BALL_RADIUS
-                offset = (self.x - paddle.center()[0]) / (paddle.width / 2)
-                offset = max(-1.0, min(1.0, offset))
-                angle = math.radians(-90 + offset * PADDLE_MAX_BOUNCE_DEG)
-                v = self.speed * self.speed_scale
-                self.vx = math.cos(angle) * v
-                self.vy = math.sin(angle) * v
-                events.add("paddle")
+            # Paddle: reflect off the struck paddle using that paddle's center.
+            # With a DOUBLE paddle the central gap matches no rect, so the
+            # ball simply falls through it (handled by the ball-loss check).
+            if self.vy > 0:
+                for pr in paddle.rects():
+                    if not (
+                        pr.left - BALL_RADIUS <= self.x <= pr.right + BALL_RADIUS
+                        and pr.top - BALL_RADIUS <= self.y <= pr.bottom + BALL_RADIUS
+                    ):
+                        continue
+                    self.y = pr.top - BALL_RADIUS
+                    half = pr.width / 2
+                    offset = max(-1.0, min(1.0, (self.x - pr.centerx) / half))
+                    angle = math.radians(-90 + offset * PADDLE_MAX_BOUNCE_DEG)
+                    v = self.speed * self.speed_scale
+                    self.vx = math.cos(angle) * v
+                    self.vy = math.sin(angle) * v
+                    events.add("paddle")
+                    break
 
         return events
 
@@ -401,6 +462,7 @@ class PowerUp:
         "M": "multi",   # splits each live ball into three
         "F": "fast",    # +50% ball speed for SPEED_MODIFIER_DURATION seconds
         "S": "slow",    # -50% ball speed for SPEED_MODIFIER_DURATION seconds
+        "D": "double",  # two paddles + central gap for POWERUP_DURATION seconds
     }
     LETTERS = list(TYPES.keys())
 
@@ -566,6 +628,10 @@ class Game:
     def on_powerup_caught(self, kind):
         if kind == "wide":
             self.paddle.apply_wide(self.time)
+        elif kind == "double":
+            # Two side-by-side paddles with an open central gap; lasts the
+            # same as WIDE. Cancels an active WIDE (mutually exclusive).
+            self.paddle.apply_double(self.time)
         elif kind == "fast":
             # Boost: +50% speed, lasts SPEED_MODIFIER_DURATION seconds.
             # Cancels an active slow (the two are mutually exclusive).
@@ -645,6 +711,7 @@ class Game:
             return
         self.time += dt
         self.update_speed_timers()  # apply/expire the active FAST/SLOW effect
+        self.paddle.refresh(self.time)  # expire the active DOUBLE effect
 
         keys = pygame.key.get_pressed()
         self.handle_paddle_input(dt, keys)

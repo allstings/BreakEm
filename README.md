@@ -71,13 +71,20 @@ paddle to activate it.
 
 | Letter | Effect | Duration |
 | :----: | ------ | -------- |
-| **W**  | **Wide** — the paddle gets noticeably wider | 10 seconds |
+| **W**  | **Wide** — the paddle gets noticeably wider | until the ball is reset |
 | **M**  | **Multi** — each live ball splits into three | instant |
 | **F**  | **Fast** — all live balls move **+50 %** faster | 5 seconds |
 | **S**  | **Slow** — all live balls move **−50 %** slower | 5 seconds |
+| **D**  | **Double** — two paddles side-by-side with an open gap in the middle; the ball bounces off either paddle but can drop through the gap | 10 seconds |
 
 Notes:
 
+- **Wide** and **Double** are both paddle replacements and are mutually
+  exclusive — catching one cancels the other.
+- **Double** is a risk/reward effect: more paddle surface to save the ball,
+  but a one-paddle-width hole in the middle that costs you a ball if you drop
+  the ball through it. It times out after 10 seconds and also clears when you
+  lose a ball or advance a level.
 - **Fast** and **Slow** are mutually exclusive — catching one cancels the
   other. Both expire after 5 seconds and are cleared when you lose a ball or
   advance to a new level.
