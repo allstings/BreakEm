@@ -214,6 +214,16 @@ class Paddle:
         # Primary (leftmost) paddle rect — kept for simple consumers.
         return self.rects()[0]
 
+    def catches(self, rect):
+        """True if `rect` overlaps any active paddle catch surface.
+
+        Normal / WIDE: the single paddle. DOUBLE: either side paddle. The
+        central gap matches no rect, so it is intentionally NOT a catch
+        surface — a power-up over the gap falls through, consistent with the
+        ball falling through the same gap.
+        """
+        return any(rect.colliderect(pr) for pr in self.rects())
+
     def center(self):
         return self.x + self.width / 2, self.y + self.height / 2
 
@@ -764,7 +774,7 @@ class Game:
             pu.update(dt)
             if pu.rect.bottom > HEIGHT:
                 self.powerups.remove(pu)
-            elif pu.rect.colliderect(self.paddle.rect()):
+            elif self.paddle.catches(pu.rect):
                 self.play_sound("powerup")
                 self.on_powerup_caught(pu.kind)
                 self.powerups.remove(pu)

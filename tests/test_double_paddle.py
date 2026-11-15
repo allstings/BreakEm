@@ -155,6 +155,67 @@ for _ in range(int(11 * 60)):
 check("integration: double expired after ~11s of game time",
       not game.paddle.double)
 
+# 10. Power-up catch surfaces while Double is active (THE BUG FIX) ---------
+#     Catch must test BOTH side paddles; the central gap must fall through.
+p = B.Paddle()
+p.apply_double(0.0)
+rs = p.rects()
+left, right = rs[0], rs[1]
+gap_cx = (left.right + right.left) // 2
+
+def pu_at(cx):
+    """A power-up rect centered on x=`cx` at paddle height."""
+    r = pygame.Rect(0, 0, B.POWERUP_SIZE, B.POWERUP_SIZE)
+    r.center = (int(cx), p.y + p.height // 2)
+    return r
+
+check("catch: power-up over LEFT paddle is caught", p.catches(pu_at(left.centerx)))
+check("catch: power-up over RIGHT paddle is caught", p.catches(pu_at(right.centerx)))
+check("catch: power-up over the central GAP is NOT caught", not p.catches(pu_at(gap_cx)))
+check("catch: normal paddle still catches on its single surface",
+      B.Paddle().catches(pu_at(B.WIDTH // 2)))
+
+# 10b. Integration: a dropped power-up on the RIGHT paddle is caught by real
+#     Game.update() and applies its effect (was silently missed before the fix)
+game = new_game()
+game.balls = []  # no ball, so a ball-loss/serve can't interfere
+game.paddle.apply_double(game.time)
+C = B.WIDTH // 2
+# Park the paddle so its center is at C, and pin the mouse there so the
+# mouse-follow keeps it put through the update frame.
+game.paddle.x = C - game.paddle.width / 2
+pygame.mouse.set_pos((C, B.HEIGHT // 2))
+right = game.paddle.rects()[1]
+pu = B.PowerUp(right.centerx, right.centery)
+pu.letter, pu.kind = "F", "fast"
+pu.rect.center = (right.centerx, right.centery)
+game.powerups = [pu]
+boost_before = game.speed_boost_until
+game.update(1.0 / 60.0)
+check("integration: right-paddle power-up is removed (caught)",
+      pu not in game.powerups)
+check("integration: caught power-up applied its effect (fast timer set)",
+      game.speed_boost_until > boost_before)
+
+# 10c. Integration: a power-up over the GAP is NOT caught (falls through) ----
+game = new_game()
+game.balls = []
+game.paddle.apply_double(game.time)
+C = B.WIDTH // 2
+game.paddle.x = C - game.paddle.width / 2
+pygame.mouse.set_pos((C, B.HEIGHT // 2))
+rs = game.paddle.rects()
+gap_cx = (rs[0].right + rs[1].left) // 2
+pu = B.PowerUp(gap_cx, rs[0].centery)
+pu.letter, pu.kind = "F", "fast"
+pu.rect.center = (gap_cx, rs[0].centery)
+game.powerups = [pu]
+game.update(1.0 / 60.0)
+check("integration: gap power-up is NOT caught (still falling)",
+      pu in game.powerups)
+check("integration: gap power-up applied no effect",
+      game.speed_boost_until == 0.0)
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} FAILED -> {FAILURES}")

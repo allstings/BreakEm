@@ -220,3 +220,89 @@ expiry (`wide_until = now + POWERUP_DURATION`) — the only missing piece was
 the expiry branch in `Paddle.refresh(now)`, which now reverts Wide to the
 base width while preserving the paddle's visual center (same recentering
 technique as Double).
+
+---
+
+## Bug Fix: Dropped Power-ups Missed While the DOUBLE Paddle Is Active
+
+### Overview (reported symptom)
+While the **Double** paddle power-up is active, power-ups that drop from
+destroyed bricks do **not** get caught by either side paddle and are silently
+ignored — they fall off the bottom of the screen and are removed. The Double
+paddle's **ball** behavior and 10-second timeout work correctly; the issue is
+specifically with **power-up catch detection** while in Double mode.
+
+### Root cause analysis (confirmed by reading the code)
+The root cause is **not** the "fell below HEIGHT" line. That branch
+(`pu.rect.bottom > HEIGHT`, `breakem.py:765`) only removes a power-up *after*
+it has already passed the paddles — it is working as intended and is the
+**symptom**, not the cause.
+
+The real cause is a mismatch between which paddle rect(s) are used for **ball
+collision** versus **power-up catch**:
+
+| Consumer          | Code (breakem.py)                                  | Rects used |
+| ----------------- | -------------------------------------------------- | ---------- |
+| Ball vs. paddle   | `Ball.update` → `for pr in paddle.rects():` (L356) | **all** active rects |
+| Power-up catch    | `Game.update` → `pu.rect.colliderect(self.paddle.rect())` (L767) | **leftmost rect only** |
+
+- `Paddle.rects()` returns **both** side paddles in Double mode —
+  `[left, right]` with the open central gap (`breakem.py:206–211`).
+- `Paddle.rect()` is a convenience accessor that returns only `rects()[0]`
+  (the **leftmost** paddle) (`breakem.py:213–215`).
+
+So in Double mode the catch test checks **only the left paddle**. A power-up
+that lands on the **right** paddle (or over the central gap) fails the
+`colliderect` test, is never caught, and is then dropped by the `bottom >
+HEIGHT` branch. The ball is unaffected because it already iterates over every
+rect in `rects()`.
+
+**Net effect:** while Double is active, only power-ups that happen to fall on
+the left paddle are caught; anything landing on the right paddle or the gap is
+missed. This matches the reported "power-ups are ignored" behavior.
+
+### Fix plan
+Make the power-up catch detection test against **all active paddle rects**,
+mirroring how ball collision already works. In normal / WIDE mode `rects()` is
+a one-element list, so the change is behavior-preserving there.
+
+#### Phase 1 — Analysis & Preparation
+- [x] Confirm the ball iterates `paddle.rects()` (L356) while the power-up
+      catch uses the single `paddle.rect()` (L767).
+- [x] Confirm `Paddle.rect()` returns only `rects()[0]` (leftmost) (L213–215).
+- [x] **Decision (confirmed):** while Double is active, a power-up over the
+      central gap **falls through** (consistent with the ball) — only the two
+      side paddles are catch surfaces.
+
+#### Phase 2 — Implementation (done)
+- [x] Add `Paddle.catches(rect)` — returns `any(rect.colliderect(pr) for pr in
+      self.rects())`; the catch-surface test lives in one place (normal/Wide:
+      one rect; Double: both side paddles; the gap matches no rect, so it is
+      not a catch surface).
+- [x] Update the power-up catch check in `Game.update` to call
+      `self.paddle.catches(pu.rect)` instead of
+      `pu.rect.colliderect(self.paddle.rect())` (the leftmost-rect-only bug).
+- [x] Keep the off-screen removal (`pu.rect.bottom > HEIGHT`) and the
+      "catch → apply effect + remove" flow unchanged.
+- [x] Normal / WIDE single-rect path unchanged (`rects()` is a one-element
+      list, so `catches()` is behavior-preserving there).
+
+#### Phase 3 — Testing & Refinement (done, except manual play-test)
+- [x] `tests/test_double_paddle.py` — added sections 10/10b/10c:
+    - power-up over the **left** paddle is caught;
+    - power-up over the **right** paddle is caught (missed before the fix);
+    - power-up over the central **gap** is **not** caught (falls through);
+    - integration: a right-paddle drop is caught by `Game.update()` and its
+      effect (FAST) is applied; a gap drop is not caught and applies nothing.
+- [x] `tests/test_powerups.py` — added section 11: with a normal (non-double)
+      paddle, a dropped power-up is still caught exactly once (regression).
+- [x] Ran both harnesses — all checks pass, no regressions
+      (`test_double_paddle.py`: 39/39, `test_powerups.py`: 41/41).
+- [ ] **Manual play-test (user):** catch power-ups on both side paddles while
+      Double is active; confirm gap drops still fall through (covered
+      functionally by the 10b/10c integration checks).
+
+**Status:** **FIXED & VERIFIED.** Added `Paddle.catches(rect)` (tests all
+active catch surfaces; the gap is intentionally not one) and switched the
+power-up catch check in `Game.update` to use it. Both test harnesses pass with
+no regressions. Remaining: optional user manual play-test.

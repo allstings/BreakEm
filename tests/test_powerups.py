@@ -203,6 +203,25 @@ game.update(1.0 / 60.0)            # one real simulation frame
 check("update() applies FAST scale", abs(game.active_speed_scale - 1.5) < 1e-9)
 check("update() moves ball at base*1.5", abs(mag(ball) - ball.speed * 1.5) < 1e-3)
 
+# 11. Regression: a normal (non-double) paddle still catches a dropped power-up
+#     exactly once, via the real Game.update() catch path (now using rects()).
+game = new_game()
+game.balls = []  # no ball, so a ball-loss/serve can't interfere
+C = B.WIDTH // 2
+game.paddle.x = C - game.paddle.width / 2
+pygame.mouse.set_pos((C, B.HEIGHT // 2))
+pr = game.paddle.rects()[0]
+pu = B.PowerUp(pr.centerx, pr.centery)
+pu.letter, pu.kind = "W", "wide"
+pu.rect.center = (pr.centerx, pr.centery)
+game.powerups = [pu]
+game.update(1.0 / 60.0)
+check("regression: normal paddle catches dropped power-up",
+      pu not in game.powerups)
+check("regression: exactly one power-up consumed (applied once)",
+      len(game.powerups) == 0)
+check("regression: wide effect applied", game.paddle.wide)
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} FAILED -> {FAILURES}")
