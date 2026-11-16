@@ -1,4 +1,4 @@
-('D:\\Temp\\BreakEm\\build\\Breakem\\PYZ-00.pyz',
+('D:\\Temp\\BreakEm\\build\\BreakEm\\PYZ-00.pyz',
  [('__future__',
    'C:\\Program '
    'Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib\\__future__.py',
